@@ -2,55 +2,23 @@ provider "aws" {
   region = "us-east-1"
 }
 
-resource "aws_vpc" "devopsshack_vpc" {
-  cidr_block = "10.0.0.0/16"
+# Reference your existing VPC from your AWS Console
+data "aws_vpc" "my_vpc" {
+  id = "vpc-07d48504be40f6484"
+}
 
-  tags = {
-    Name = "devopsshack-vpc"
+# Reference the subnets inside your existing VPC
+data "aws_subnets" "my_subnets" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.my_vpc.id]
   }
 }
 
-resource "aws_subnet" "devopsshack_subnet" {
-  count = 2
-  vpc_id                  = aws_vpc.devopsshack_vpc.id
-  cidr_block              = cidrsubnet(aws_vpc.devopsshack_vpc.cidr_block, 8, count.index)
-  availability_zone       = element(["us-east-1", "ap-south-1b"], count.index)
-  map_public_ip_on_launch = true
-
-  tags = {
-    Name = "devopsshack-subnet-${count.index}"
-  }
-}
-
-resource "aws_internet_gateway" "devopsshack_igw" {
-  vpc_id = aws_vpc.devopsshack_vpc.id
-
-  tags = {
-    Name = "devopsshack-igw"
-  }
-}
-
-resource "aws_route_table" "devopsshack_route_table" {
-  vpc_id = aws_vpc.devopsshack_vpc.id
-
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.devopsshack_igw.id
-  }
-
-  tags = {
-    Name = "devopsshack-route-table"
-  }
-}
-
-resource "aws_route_table_association" "devopsshack_association" {
-  count          = 2
-  subnet_id      = aws_subnet.devopsshack_subnet[count.index].id
-  route_table_id = aws_route_table.devopsshack_route_table.id
-}
-
+# Security group for the EKS cluster
 resource "aws_security_group" "devopsshack_cluster_sg" {
-  vpc_id = aws_vpc.devopsshack_vpc.id
+  name   = "devopsshack-cluster-sg"
+  vpc_id = data.aws_vpc.my_vpc.id
 
   egress {
     from_port   = 0
@@ -64,8 +32,10 @@ resource "aws_security_group" "devopsshack_cluster_sg" {
   }
 }
 
+# Security group for the EKS nodes
 resource "aws_security_group" "devopsshack_node_sg" {
-  vpc_id = aws_vpc.devopsshack_vpc.id
+  name   = "devopsshack-node-sg"
+  vpc_id = data.aws_vpc.my_vpc.id
 
   ingress {
     from_port   = 0
@@ -91,26 +61,24 @@ resource "aws_eks_cluster" "devopsshack" {
   role_arn = aws_iam_role.devopsshack_cluster_role.arn
 
   vpc_config {
-    subnet_ids         = aws_subnet.devopsshack_subnet[*].id
-    security_group_ids = [aws_security_group.devopsshack_cluster_sg.id]
+    subnet_ids         = data.aws_subnets.my_subnets.ids
+    security_group_ids = ["sg-052d13715ac14324a", aws_security_group.devopsshack_cluster_sg.id]
   }
 }
 
-
 resource "aws_eks_addon" "ebs_csi_driver" {
-  cluster_name    = aws_eks_cluster.devopsshack.name
-  addon_name      = "aws-ebs-csi-driver"
+  cluster_name = aws_eks_cluster.devopsshack.name
+  addon_name   = "aws-ebs-csi-driver"
   
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "OVERWRITE"
 }
 
-
 resource "aws_eks_node_group" "devopsshack" {
   cluster_name    = aws_eks_cluster.devopsshack.name
   node_group_name = "devopsshack-node-group"
   node_role_arn   = aws_iam_role.devopsshack_node_group_role.arn
-  subnet_ids      = aws_subnet.devopsshack_subnet[*].id
+  subnet_ids      = data.aws_subnets.my_subnets.ids
 
   scaling_config {
     desired_size = 3
@@ -121,7 +89,7 @@ resource "aws_eks_node_group" "devopsshack" {
   instance_types = ["t2.medium"]
 
   remote_access {
-    ec2_ssh_key = var.ssh_key_name
+    ec2_ssh_key               = "k8s"
     source_security_group_ids = [aws_security_group.devopsshack_node_sg.id]
   }
 }
