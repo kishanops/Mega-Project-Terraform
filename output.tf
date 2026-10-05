@@ -7,9 +7,9 @@ output "node_group_id" {
 }
 
 output "vpc_id" {
-  value = aws_vpc.devopsshack_vpc.id
+  value = data.aws_vpc.my_vpc.id
 }
 
 output "subnet_ids" {
-  value = aws_subnet.devopsshack_subnet[*].id
+  value = data.aws_subnets.my_subnets.ids
 }
