@@ -7,11 +7,16 @@ data "aws_vpc" "my_vpc" {
   id = "vpc-07d48504be40f6484"
 }
 
-# Reference the subnets inside your existing VPC
+# Reference subnets while excluding unsupported AZs like us-east-1e
 data "aws_subnets" "my_subnets" {
   filter {
     name   = "vpc-id"
     values = [data.aws_vpc.my_vpc.id]
+  }
+
+  filter {
+    name   = "availability-zone"
+    values = ["us-east-1a", "us-east-1b", "us-east-1c", "us-east-1d"]
   }
 }
 
